@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.env
+
+# Node
+node_modules/
+.env.local
+
+# OS
+.DS_Store
+
+# Uploads (we don't want to commit user files)
+server/uploads/
+
+# Build
+dist/
+build/
+
