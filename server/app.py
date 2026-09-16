@@ -27,6 +27,10 @@ app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(__file__), 'uploads')
 # ─── Create uploads folder if it doesn't exist ───────────────────────────────
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
+# ─── Initialize the database (creates tables if they don't exist) ─────────────
+from services.db import init_db
+init_db()
+
 # ─── Import and register route blueprints ────────────────────────────────────
 # Blueprints are Flask's way of organizing routes into separate files
 # We import them here and register them with a URL prefix
@@ -47,5 +51,3 @@ def health():
 # Only runs when this file is executed directly, not when imported
 if __name__ == '__main__':
     app.run(debug=True, port=5001)
-
-    

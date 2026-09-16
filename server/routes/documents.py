@@ -3,6 +3,7 @@ import os
 from flask import Blueprint, request, jsonify, current_app
 from services.extractor import extract_text
 from services.db import execute_query
+from services.embedder import embed_and_store_document
 
 # ─── Blueprint setup ──────────────────────────────────────────────────────────
 # A Blueprint is Flask's way of grouping related routes
@@ -33,14 +34,15 @@ def get_file_type(filename):
 def upload_document():
     """
     Receives a file from the frontend, extracts its text,
-    saves it to the uploads folder, and stores metadata in Supabase.
+    saves it to the uploads folder, and stores metadata in the database.
     
     Flow:
     1. Validate the file exists and has an allowed type
     2. Save it to the uploads/ folder
     3. Extract text using pdfplumber or pytesseract
-    4. Save document metadata to the documents table in Supabase
-    5. Return the document ID so the frontend can track it
+    4. Save document metadata to the documents table
+    5. Chunk and embed the document text
+    6. Return the document ID so the frontend can track it
     """
 
     # ── Step 1: Check a file was actually sent ────────────────────────────────
@@ -73,27 +75,37 @@ def upload_document():
     if not extracted_text:
         return jsonify({'error': 'No text could be extracted from this file'}), 400
 
-    # ── Step 4: Save document metadata to Supabase ───────────────────────────
-    # We use %s placeholders — psycopg2 safely injects the values
+    # ── Step 4: Save document metadata to database ───────────────────────────
+    # SQLite uses ? placeholders instead of %s (PostgreSQL syntax)
     # This prevents SQL injection attacks
-    result = execute_query(
+    execute_query(
         """
         INSERT INTO documents (filename, file_type, extracted_text, chunk_count)
-        VALUES (%s, %s, %s, %s)
-        RETURNING id
+        VALUES (?, ?, ?, ?)
         """,
         (filename, file_type, extracted_text, 0),
-        fetch=True
+        fetch=False
     )
 
+    # SQLite doesn't support RETURNING — get the last inserted ID separately
+    result = execute_query(
+        "SELECT id FROM documents ORDER BY id DESC LIMIT 1",
+        fetch=True
+    )
     document_id = result[0]['id']
 
-    # ── Step 5: Return success with document info ─────────────────────────────
+    # ── Step 5: Chunk and embed the document ─────────────────────────────────
+    # This converts the text into vectors and stores them in the database
+    # so we can do semantic search later
+    chunk_count = embed_and_store_document(document_id, extracted_text)
+
+    # ── Step 6: Return success with document info ─────────────────────────────
     return jsonify({
         'message': 'Document uploaded and text extracted successfully',
         'document_id': document_id,
         'filename': filename,
         'file_type': file_type,
+        'chunk_count': chunk_count,
         'text_length': len(extracted_text),
         'preview': extracted_text[:200] + '...' if len(extracted_text) > 200 else extracted_text
     }), 201
@@ -102,7 +114,7 @@ def upload_document():
 @documents_bp.route('/', methods=['GET'])
 def get_documents():
     """
-    Returns all uploaded documents from Supabase.
+    Returns all uploaded documents from the database.
     The frontend uses this to show the document library.
     """
     documents = execute_query(
@@ -114,12 +126,13 @@ def get_documents():
 @documents_bp.route('/<int:document_id>', methods=['DELETE'])
 def delete_document(document_id):
     """
-    Deletes a document and all its chunks from Supabase.
+    Deletes a document and all its chunks from the database.
     ON DELETE CASCADE in the schema means deleting the document
     automatically deletes all its chunks too.
     """
+    # SQLite uses ? placeholders — not %s
     execute_query(
-        "DELETE FROM documents WHERE id = %s",
+        "DELETE FROM documents WHERE id = ?",
         (document_id,),
         fetch=False
     )
