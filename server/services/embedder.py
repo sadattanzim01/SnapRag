@@ -160,49 +160,44 @@ def embed_and_store_document(document_id, text):
 # ─── Find relevant chunks for a question ──────────────────────────────────────
 def find_relevant_chunks(question, top_k=5):
     """
-    Finds the most semantically relevant chunks for a given question.
+    Finds the chunks most semantically similar to the question.
 
-    How it works:
-    1. Embed the question → get a vector
-    2. Load all chunks from the database
-    3. Calculate cosine similarity between question and each chunk
-    4. Return the top_k most similar chunks
-
-    In production with pgvector, step 2-3 happen inside PostgreSQL
-    using the <=> operator (cosine distance). Much faster for large datasets.
-
-    Args:
-        question: the user's question string
-        top_k: how many chunks to return (default 5)
-    Returns:
-        list of the most relevant chunk dicts
+    Changes from before:
+    - JOINs the documents table so each chunk comes back with its filename
+      (needed so Claude and the user can see WHERE an answer came from)
     """
-    # Step 1: Embed the question
+    # Step 1: Embed the question into 384 numbers
     question_embedding = embed_text(question)
 
-    # Step 2: Load all chunks from database
+    # Step 2: Load all chunks along with their document's filename
+    # JOIN = combine rows from two tables where document_id matches id
     chunks = execute_query(
-        "SELECT id, document_id, chunk_index, content, embedding FROM document_chunks"
+        """
+        SELECT c.id, c.document_id, c.chunk_index, c.content, c.embedding,
+               d.filename
+        FROM document_chunks c
+        JOIN documents d ON c.document_id = d.id
+        """
     )
 
     if not chunks:
         return []
 
-    # Step 3: Calculate similarity for each chunk
+    # Step 3: Score every chunk against the question
     scored_chunks = []
     for chunk in chunks:
-        # Parse the JSON string back into a list of floats
+        # Embeddings are stored as JSON text, so turn it back into a list
         chunk_embedding = json.loads(chunk['embedding'])
-
-        # Calculate how similar this chunk is to the question
         similarity = cosine_similarity(question_embedding, chunk_embedding)
 
         scored_chunks.append({
             'content': chunk['content'],
             'document_id': chunk['document_id'],
+            'filename': chunk['filename'],
+            'chunk_index': chunk['chunk_index'],
             'similarity': similarity
         })
 
-    # Step 4: Sort by similarity (highest first) and return top_k
+    # Step 4: Highest similarity first, keep only the top_k
     scored_chunks.sort(key=lambda x: x['similarity'], reverse=True)
     return scored_chunks[:top_k]

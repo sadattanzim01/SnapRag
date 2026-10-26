@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 # ─── Load environment variables from .env file ───────────────────────────────
 # This must happen FIRST before anything else so all os.environ values are set
-load_dotenv()
+load_dotenv(override=True)
 
 # ─── Create the Flask app instance ───────────────────────────────────────────
 app = Flask(__name__)
