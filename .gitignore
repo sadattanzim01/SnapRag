@@ -19,3 +19,4 @@ server/uploads/
 dist/
 build/
 
+*.db
