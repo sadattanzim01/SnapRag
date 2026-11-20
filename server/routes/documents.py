@@ -127,10 +127,19 @@ def get_documents():
 def delete_document(document_id):
     """
     Deletes a document and all its chunks from the database.
-    ON DELETE CASCADE in the schema means deleting the document
-    automatically deletes all its chunks too.
+
+    SQLite does not cascade deletes by default, so we delete the chunks
+    ourselves first. Otherwise a deleted document's chunks would stay in
+    document_chunks and could still show up in answers.
     """
-    # SQLite uses ? placeholders — not %s
+    # Step 1: remove the document's chunks (and their embeddings)
+    execute_query(
+        "DELETE FROM document_chunks WHERE document_id = ?",
+        (document_id,),
+        fetch=False
+    )
+
+    # Step 2: remove the document row itself
     execute_query(
         "DELETE FROM documents WHERE id = ?",
         (document_id,),

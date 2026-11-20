@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { getDocuments, deleteDocument, DocumentInfo } from './api';
 import UploadZone from './components/UploadZone';
+import Chat from './components/Chat';
 
 function App() {
   const [docs, setDocs] = useState<DocumentInfo[]>([]);
@@ -36,6 +37,8 @@ function App() {
           ))}
           {docs.length === 0 && <p className="text-gray-500">No documents yet.</p>}
         </div>
+        <h2 className="text-lg font-semibold mt-8 mb-3 text-gray-300">Chat</h2>
+        <Chat />
       </div>
     </div>
   );
