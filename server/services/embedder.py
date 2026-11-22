@@ -158,38 +158,40 @@ def embed_and_store_document(document_id, text):
     return len(chunks)
 
 # ─── Find relevant chunks for a question ──────────────────────────────────────
-def find_relevant_chunks(question, top_k=5):
+def find_relevant_chunks(question, top_k=8, document_ids=None):
     """
-    Finds the chunks most semantically similar to the question.
+    Finds the chunks most similar to the question.
 
-    Changes from before:
-    - JOINs the documents table so each chunk comes back with its filename
-      (needed so Claude and the user can see WHERE an answer came from)
+    New: document_ids lets the user limit the search to the documents
+    ticked in the sidebar. None means search everything.
     """
-    # Step 1: Embed the question into 384 numbers
     question_embedding = embed_text(question)
 
-    # Step 2: Load all chunks along with their document's filename
-    # JOIN = combine rows from two tables where document_id matches id
-    chunks = execute_query(
-        """
+    query = """
         SELECT c.id, c.document_id, c.chunk_index, c.content, c.embedding,
                d.filename
         FROM document_chunks c
         JOIN documents d ON c.document_id = d.id
-        """
-    )
+    """
+    params = ()
+
+    if document_ids:
+        # Build "?,?,?" with one placeholder per id.
+        # We never paste the ids into the SQL string directly, so SQL injection
+        # isn't possible.
+        placeholders = ','.join('?' for _ in document_ids)
+        query += f" WHERE c.document_id IN ({placeholders})"
+        params = tuple(document_ids)
+
+    chunks = execute_query(query, params)
 
     if not chunks:
         return []
 
-    # Step 3: Score every chunk against the question
     scored_chunks = []
     for chunk in chunks:
-        # Embeddings are stored as JSON text, so turn it back into a list
         chunk_embedding = json.loads(chunk['embedding'])
         similarity = cosine_similarity(question_embedding, chunk_embedding)
-
         scored_chunks.append({
             'content': chunk['content'],
             'document_id': chunk['document_id'],
@@ -198,6 +200,5 @@ def find_relevant_chunks(question, top_k=5):
             'similarity': similarity
         })
 
-    # Step 4: Highest similarity first, keep only the top_k
     scored_chunks.sort(key=lambda x: x['similarity'], reverse=True)
     return scored_chunks[:top_k]

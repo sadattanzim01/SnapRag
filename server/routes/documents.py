@@ -1,6 +1,7 @@
 # ─── Imports ──────────────────────────────────────────────────────────────────
 import os
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, jsonify, current_app, send_from_directory
+from werkzeug.utils import secure_filename
 from services.extractor import extract_text
 from services.db import execute_query
 from services.embedder import embed_and_store_document
@@ -61,7 +62,9 @@ def upload_document():
 
     # ── Step 2: Save file to uploads/ folder ─────────────────────────────────
     filename = file.filename
-    file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
+    # secure_filename strips things like "../" so an uploaded filename can't
+    # write outside the uploads folder
+    file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], secure_filename(filename))
     file.save(file_path)
 
     file_type = get_file_type(filename)
@@ -146,3 +149,26 @@ def delete_document(document_id):
         fetch=False
     )
     return jsonify({'message': 'Document deleted successfully'})
+
+
+# ─── GET /api/documents/<id>/file ─────────────────────────────────────────────
+@documents_bp.route('/<int:document_id>/file', methods=['GET'])
+def get_document_file(document_id):
+    """
+    Sends the ORIGINAL uploaded file back to the browser, so the viewer
+    panel can display the real PDF or image.
+    """
+    rows = execute_query(
+        "SELECT filename FROM documents WHERE id = ?",
+        (document_id,)
+    )
+    if not rows:
+        return jsonify({'error': 'Document not found'}), 404
+
+    # send_from_directory refuses paths outside the folder, and it sends the
+    # file inline, so the browser displays it instead of downloading it.
+    # A missing file on disk becomes a 404 automatically.
+    return send_from_directory(
+        current_app.config['UPLOAD_FOLDER'],
+        secure_filename(rows[0]['filename'])
+    )

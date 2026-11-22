@@ -1,19 +1,33 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { Copy, Download, FileText, X } from 'lucide-react';
 import { getDocuments, deleteDocument, DocumentInfo, GeneratedDoc } from './api';
 import UploadZone from './components/UploadZone';
 import Chat from './components/Chat';
 import DocViewer from './components/DocViewer';
 
+// ─── Drag handles ────────────────────────────────────────────────────────────
+// A handle is the thin bar you drag. onDragging tells App when a drag starts
+// and stops, so the PDF iframe can ignore the mouse during a drag.
+const handleStyle = 'bg-gray-800 hover:bg-blue-500 data-[resize-handle-state=drag]:bg-blue-500 transition-colors';
+
+function ColHandle({ onDragging }: { onDragging: (d: boolean) => void }) {
+  // Vertical bar, dragged left/right
+  return <PanelResizeHandle onDragging={onDragging} className={`w-1.5 ${handleStyle}`} />;
+}
+
+function RowHandle({ onDragging }: { onDragging: (d: boolean) => void }) {
+  // Horizontal bar, dragged up/down
+  return <PanelResizeHandle onDragging={onDragging} className={`h-1.5 ${handleStyle}`} />;
+}
+
 function App() {
   const [docs, setDocs] = useState<DocumentInfo[]>([]);
-  // Documents the chat is allowed to search (ticked checkboxes)
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  // Document Claude generated, shown in the right panel
   const [generated, setGenerated] = useState<GeneratedDoc | null>(null);
-  // Document being previewed in the viewer panel next to the sidebar
   const [viewingId, setViewingId] = useState<number | null>(null);
+  const [dragging, setDragging] = useState(false);
 
   const knownIds = useRef<Set<number>>(new Set());
 
@@ -37,7 +51,7 @@ function App() {
 
   async function handleDelete(id: number) {
     await deleteDocument(id);
-    if (viewingId === id) setViewingId(null);   // close the viewer if its file is gone
+    if (viewingId === id) setViewingId(null);
     loadDocs();
   }
 
@@ -54,7 +68,6 @@ function App() {
     setSelected(allSelected ? new Set() : new Set(docs.map(d => d.id)));
   }
 
-  // Derived from the id, so it always reflects the latest document list
   const viewing = docs.find(d => d.id === viewingId) || null;
 
   function copyDoc() {
@@ -73,81 +86,112 @@ function App() {
   }
 
   return (
-    <div className="h-screen flex bg-gray-950 text-white">
+    <div className="h-screen bg-gray-950 text-white">
+      {/*
+        OUTER group: three columns side by side (left | chat | generated).
+        Sizes are percentages of the window and always add up to 100.
+        Panels that appear and disappear need an `id` and an `order` so the
+        library knows where they belong when they come back.
+      */}
+      <PanelGroup direction="horizontal" autoSaveId="snaprag-layout">
 
-      {/* ── LEFT: upload + document list ─────────────────────────────────── */}
-      <aside className="w-72 shrink-0 border-r border-gray-800 flex flex-col">
-        <div className="p-4 border-b border-gray-800">
-          <h1 className="text-2xl font-bold">SnapRAG</h1>
-        </div>
+        {/* ── LEFT COLUMN ─────────────────────────────────────────────────── */}
+        <Panel id="left" order={1} defaultSize={24} minSize={15}>
+          {/* INNER group: stacks the document list on top, the viewer below */}
+          <PanelGroup direction="vertical">
 
-        <div className="p-4">
-          <UploadZone onUploaded={loadDocs} />
-        </div>
+            <Panel id="doclist" order={1} defaultSize={50} minSize={20}>
+              <div className="h-full flex flex-col">
+                <div className="p-4 border-b border-gray-800">
+                  <h1 className="text-2xl font-bold">SnapRAG</h1>
+                </div>
 
-        <div className="px-4 flex items-center justify-between text-sm text-gray-400">
-          <span>{selected.size} of {docs.length} selected</span>
-          <button onClick={toggleAll} className="hover:text-white">
-            {allSelected ? 'Select none' : 'Select all'}
-          </button>
-        </div>
+                <div className="p-4">
+                  <UploadZone onUploaded={loadDocs} />
+                </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-2">
-          {docs.map(d => (
-            <div
-              key={d.id}
-              className={`flex items-center gap-2 border rounded-lg px-3 py-2 ${
-                viewingId === d.id ? 'bg-gray-800 border-blue-500' : 'bg-gray-900 border-gray-800'
-              }`}
-            >
-              <input
-                type="checkbox"
-                checked={selected.has(d.id)}
-                onChange={() => toggle(d.id)}
-                className="accent-blue-500"
-              />
-              {/* Clicking the name opens the viewer; the checkbox only changes chat scope */}
-              <button
-                onClick={() => setViewingId(d.id)}
-                className="flex flex-1 items-center gap-2 min-w-0 text-left hover:text-blue-400"
-                title={`Open ${d.filename}`}
-              >
-                <FileText size={16} className="text-gray-500 shrink-0" />
-                <span className="truncate text-sm">{d.filename}</span>
-              </button>
-              <button onClick={() => handleDelete(d.id)} className="text-gray-500 hover:text-red-400">
-                <X size={16} />
-              </button>
-            </div>
-          ))}
-          {docs.length === 0 && <p className="text-gray-500 text-sm">No documents yet.</p>}
-        </div>
-      </aside>
+                <div className="px-4 flex items-center justify-between text-sm text-gray-400">
+                  <span>{selected.size} of {docs.length} selected</span>
+                  <button onClick={toggleAll} className="hover:text-white">
+                    {allSelected ? 'Select none' : 'Select all'}
+                  </button>
+                </div>
 
-      {/* ── VIEWER: original file preview (only when one is open) ────────── */}
-      {viewing && <DocViewer doc={viewing} onClose={() => setViewingId(null)} />}
+                <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                  {docs.map(d => (
+                    <div
+                      key={d.id}
+                      className={`flex items-center gap-2 border rounded-lg px-3 py-2 ${
+                        viewingId === d.id ? 'bg-gray-800 border-blue-500' : 'bg-gray-900 border-gray-800'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selected.has(d.id)}
+                        onChange={() => toggle(d.id)}
+                        className="accent-blue-500"
+                      />
+                      <button
+                        onClick={() => setViewingId(d.id)}
+                        className="flex flex-1 items-center gap-2 min-w-0 text-left hover:text-blue-400"
+                        title={`Open ${d.filename}`}
+                      >
+                        <FileText size={16} className="text-gray-500 shrink-0" />
+                        <span className="truncate text-sm">{d.filename}</span>
+                      </button>
+                      <button onClick={() => handleDelete(d.id)} className="text-gray-500 hover:text-red-400">
+                        <X size={16} />
+                      </button>
+                    </div>
+                  ))}
+                  {docs.length === 0 && <p className="text-gray-500 text-sm">No documents yet.</p>}
+                </div>
+              </div>
+            </Panel>
 
-      {/* ── MIDDLE: chat. min-w keeps it usable when several panels are open ─ */}
-      <main className="flex-1 min-w-[24rem]">
-        <Chat selectedIds={Array.from(selected)} onDocument={setGenerated} />
-      </main>
+            {/* Viewer: only exists while a document is open */}
+            {viewing && (
+              <>
+                <RowHandle onDragging={setDragging} />
+                <Panel id="viewer" order={2} defaultSize={50} minSize={20}>
+                  <DocViewer doc={viewing} onClose={() => setViewingId(null)} dragging={dragging} />
+                </Panel>
+              </>
+            )}
+          </PanelGroup>
+        </Panel>
 
-      {/* ── RIGHT: generated document ────────────────────────────────────── */}
-      {generated && (
-        <section className="w-[28rem] shrink-0 border-l border-gray-800 flex flex-col">
-          <div className="flex items-center gap-2 p-4 border-b border-gray-800">
-            <h2 className="flex-1 font-semibold truncate">{generated.title}</h2>
-            <button onClick={copyDoc} title="Copy" className="text-gray-400 hover:text-white"><Copy size={18} /></button>
-            <button onClick={downloadDoc} title="Download .md" className="text-gray-400 hover:text-white"><Download size={18} /></button>
-            <button onClick={() => setGenerated(null)} title="Close" className="text-gray-400 hover:text-white"><X size={18} /></button>
+        <ColHandle onDragging={setDragging} />
+
+        {/* ── MIDDLE: chat ────────────────────────────────────────────────── */}
+        <Panel id="chat" order={2} defaultSize={46} minSize={25}>
+          <div className="h-full">
+            <Chat selectedIds={Array.from(selected)} onDocument={setGenerated} />
           </div>
-          <div className="flex-1 overflow-y-auto p-6">
-            <div className="prose prose-invert max-w-none">
-              <ReactMarkdown>{generated.content}</ReactMarkdown>
-            </div>
-          </div>
-        </section>
-      )}
+        </Panel>
+
+        {/* ── RIGHT: generated document ───────────────────────────────────── */}
+        {generated && (
+          <>
+            <ColHandle onDragging={setDragging} />
+            <Panel id="generated" order={3} defaultSize={30} minSize={15}>
+              <div className="h-full flex flex-col">
+                <div className="flex items-center gap-2 p-4 border-b border-gray-800">
+                  <h2 className="flex-1 font-semibold truncate">{generated.title}</h2>
+                  <button onClick={copyDoc} title="Copy" className="text-gray-400 hover:text-white"><Copy size={18} /></button>
+                  <button onClick={downloadDoc} title="Download .md" className="text-gray-400 hover:text-white"><Download size={18} /></button>
+                  <button onClick={() => setGenerated(null)} title="Close" className="text-gray-400 hover:text-white"><X size={18} /></button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-6">
+                  <div className="prose prose-invert max-w-none">
+                    <ReactMarkdown>{generated.content}</ReactMarkdown>
+                  </div>
+                </div>
+              </div>
+            </Panel>
+          </>
+        )}
+      </PanelGroup>
     </div>
   );
 }
