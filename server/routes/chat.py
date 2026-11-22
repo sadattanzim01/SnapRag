@@ -21,8 +21,10 @@ SYSTEM_PROMPT = (
     "in the uploaded documents. Do not use outside knowledge.\n\n"
     "If the user asks you to create, write, draft or compile a NEW document "
     "(a summary, report, study guide, comparison, outline, etc.), write it "
-    "using only information from the excerpts. Put the complete document in "
-    'Markdown inside <document title="Short Title"> ... </document> tags, '
+    "using only information from the excerpts. "
+    "Do not add facts, descriptions or details that are not in the excerpts, "
+    "even in generated documents. If something is missing, leave it out. "
+    'Put the complete document in Markdown inside <document title="Short Title"> ... </document> tags, '
     "and keep your normal chat reply to one or two sentences OUTSIDE the tags. "
     "Never use the tags for ordinary answers."
 )

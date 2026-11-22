@@ -101,7 +101,8 @@ function App() {
           <PanelGroup direction="vertical">
 
             <Panel id="doclist" order={1} defaultSize={50} minSize={20}>
-              <div className="h-full flex flex-col">
+              {/* The whole panel scrolls, so the list can never be squeezed to zero height */}
+              <div className="h-full overflow-y-auto">
                 <div className="p-4 border-b border-gray-800">
                   <h1 className="text-2xl font-bold">SnapRAG</h1>
                 </div>
@@ -117,7 +118,7 @@ function App() {
                   </button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                <div className="p-4 space-y-2">
                   {docs.map(d => (
                     <div
                       key={d.id}
