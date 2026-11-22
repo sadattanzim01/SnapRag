@@ -91,9 +91,13 @@ function App() {
 
             <Panel id="doclist" order={1} defaultSize={50} minSize={20}>
               <div className="h-full overflow-y-auto">
-                <div className="p-3 border-b border-gray-800">
-                  <h1 className="text-xl font-bold">SnapRAG</h1>
-                </div>
+                <div className="p-4 border-b border-gray-800">
+                  {/* Logo + name side by side. Files in /public are served from the site root, so "/logo.png" works */}
+                  <div className="flex items-center gap-2">
+                    <img src="/logo.png" alt="SnapRAG" className="w-8 h-8 rounded-lg shrink-0" />
+                    <h1 className="text-xl font-bold truncate">SnapRAG</h1>
+                  </div>
+                </div>  
 
                 <div className="p-3">
                   <UploadZone onUploaded={loadDocs} />
