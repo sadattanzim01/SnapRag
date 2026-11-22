@@ -7,18 +7,13 @@ import UploadZone from './components/UploadZone';
 import Chat from './components/Chat';
 import DocViewer from './components/DocViewer';
 
-// ─── Drag handles ────────────────────────────────────────────────────────────
-// A handle is the thin bar you drag. onDragging tells App when a drag starts
-// and stops, so the PDF iframe can ignore the mouse during a drag.
 const handleStyle = 'bg-gray-800 hover:bg-blue-500 data-[resize-handle-state=drag]:bg-blue-500 transition-colors';
 
 function ColHandle({ onDragging }: { onDragging: (d: boolean) => void }) {
-  // Vertical bar, dragged left/right
   return <PanelResizeHandle onDragging={onDragging} className={`w-1.5 ${handleStyle}`} />;
 }
 
 function RowHandle({ onDragging }: { onDragging: (d: boolean) => void }) {
-  // Horizontal bar, dragged up/down
   return <PanelResizeHandle onDragging={onDragging} className={`h-1.5 ${handleStyle}`} />;
 }
 
@@ -87,42 +82,35 @@ function App() {
 
   return (
     <div className="h-screen bg-gray-950 text-white">
-      {/*
-        OUTER group: three columns side by side (left | chat | generated).
-        Sizes are percentages of the window and always add up to 100.
-        Panels that appear and disappear need an `id` and an `order` so the
-        library knows where they belong when they come back.
-      */}
-      <PanelGroup direction="horizontal" autoSaveId="snaprag-layout">
+      {/* v2 key: forgets the old saved layout so the new sizes take effect */}
+      <PanelGroup direction="horizontal" autoSaveId="snaprag-layout-v2">
 
-        {/* ── LEFT COLUMN ─────────────────────────────────────────────────── */}
-        <Panel id="left" order={1} defaultSize={24} minSize={15}>
-          {/* INNER group: stacks the document list on top, the viewer below */}
+        {/* ── LEFT COLUMN: small by default (16%) ─────────────────────────── */}
+        <Panel id="left" order={1} defaultSize={16} minSize={10}>
           <PanelGroup direction="vertical">
 
             <Panel id="doclist" order={1} defaultSize={50} minSize={20}>
-              {/* The whole panel scrolls, so the list can never be squeezed to zero height */}
               <div className="h-full overflow-y-auto">
-                <div className="p-4 border-b border-gray-800">
-                  <h1 className="text-2xl font-bold">SnapRAG</h1>
+                <div className="p-3 border-b border-gray-800">
+                  <h1 className="text-xl font-bold">SnapRAG</h1>
                 </div>
 
-                <div className="p-4">
+                <div className="p-3">
                   <UploadZone onUploaded={loadDocs} />
                 </div>
 
-                <div className="px-4 flex items-center justify-between text-sm text-gray-400">
+                <div className="px-3 flex items-center justify-between text-xs text-gray-400">
                   <span>{selected.size} of {docs.length} selected</span>
                   <button onClick={toggleAll} className="hover:text-white">
-                    {allSelected ? 'Select none' : 'Select all'}
+                    {allSelected ? 'None' : 'All'}
                   </button>
                 </div>
 
-                <div className="p-4 space-y-2">
+                <div className="p-3 space-y-2">
                   {docs.map(d => (
                     <div
                       key={d.id}
-                      className={`flex items-center gap-2 border rounded-lg px-3 py-2 ${
+                      className={`flex items-center gap-2 border rounded-lg px-2 py-2 ${
                         viewingId === d.id ? 'bg-gray-800 border-blue-500' : 'bg-gray-900 border-gray-800'
                       }`}
                     >
@@ -137,20 +125,19 @@ function App() {
                         className="flex flex-1 items-center gap-2 min-w-0 text-left hover:text-blue-400"
                         title={`Open ${d.filename}`}
                       >
-                        <FileText size={16} className="text-gray-500 shrink-0" />
-                        <span className="truncate text-sm">{d.filename}</span>
+                        <FileText size={14} className="text-gray-500 shrink-0" />
+                        <span className="truncate text-xs">{d.filename}</span>
                       </button>
                       <button onClick={() => handleDelete(d.id)} className="text-gray-500 hover:text-red-400">
-                        <X size={16} />
+                        <X size={14} />
                       </button>
                     </div>
                   ))}
-                  {docs.length === 0 && <p className="text-gray-500 text-sm">No documents yet.</p>}
+                  {docs.length === 0 && <p className="text-gray-500 text-xs">No documents yet.</p>}
                 </div>
               </div>
             </Panel>
 
-            {/* Viewer: only exists while a document is open */}
             {viewing && (
               <>
                 <RowHandle onDragging={setDragging} />
@@ -164,18 +151,18 @@ function App() {
 
         <ColHandle onDragging={setDragging} />
 
-        {/* ── MIDDLE: chat ────────────────────────────────────────────────── */}
-        <Panel id="chat" order={2} defaultSize={46} minSize={25}>
+        {/* ── MIDDLE: chat. No defaultSize, so it fills all remaining space ── */}
+        <Panel id="chat" order={2} minSize={30}>
           <div className="h-full">
             <Chat selectedIds={Array.from(selected)} onDocument={setGenerated} />
           </div>
         </Panel>
 
-        {/* ── RIGHT: generated document ───────────────────────────────────── */}
+        {/* ── RIGHT: only exists when Claude generated a document ─────────── */}
         {generated && (
           <>
             <ColHandle onDragging={setDragging} />
-            <Panel id="generated" order={3} defaultSize={30} minSize={15}>
+            <Panel id="generated" order={3} defaultSize={34} minSize={15}>
               <div className="h-full flex flex-col">
                 <div className="flex items-center gap-2 p-4 border-b border-gray-800">
                   <h2 className="flex-1 font-semibold truncate">{generated.title}</h2>
