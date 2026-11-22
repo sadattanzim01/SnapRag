@@ -1,50 +1,70 @@
 import axios from 'axios';
 
-// Base URL of the Flask server (port 5001, since 5000 is taken by AirPlay on Mac)
 const API = 'http://127.0.0.1:5001/api';
 
-// ─── Types: the shape of the JSON Flask returns ──────────────────────────────
 export interface DocumentInfo {
   id: number;
   filename: string;
-  file_type: string;   // 'pdf' or 'image'
+  file_type: string;
   chunk_count: number;
   created_at: string;
 }
 
 export interface Source {
   filename: string;
-  similarity: number;  // 0 to 1, how close the chunk was to the question
-  preview: string;     // first 150 characters of the chunk
+  similarity: number;
+  preview: string;
+}
+
+// A document Claude wrote for the user. Shown in the right panel.
+export interface GeneratedDoc {
+  title: string;
+  content: string;   // Markdown
 }
 
 export interface AskResponse {
   answer: string;
   sources: Source[];
+  document: GeneratedDoc | null;   // null for ordinary answers
 }
 
-// ─── GET /api/documents/ ─────────────────────────────────────────────────────
+// One earlier message, sent so Claude remembers the conversation
+export interface HistoryItem {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 export async function getDocuments(): Promise<DocumentInfo[]> {
   const res = await axios.get(`${API}/documents/`);
   return res.data;
 }
 
-// ─── POST /api/documents/upload ──────────────────────────────────────────────
-// Files must be sent as FormData (multipart), the same as curl's -F "file=@..."
 export async function uploadDocument(file: File) {
   const form = new FormData();
-  form.append('file', file);   // 'file' must match request.files['file'] in Flask
+  form.append('file', file);
   const res = await axios.post(`${API}/documents/upload`, form);
   return res.data;
 }
 
-// ─── DELETE /api/documents/<id> ──────────────────────────────────────────────
 export async function deleteDocument(id: number) {
   await axios.delete(`${API}/documents/${id}`);
 }
 
-// ─── POST /api/chat/ask ──────────────────────────────────────────────────────
-export async function askQuestion(question: string): Promise<AskResponse> {
-  const res = await axios.post(`${API}/chat/ask`, { question });
+// URL of the original uploaded file, used by the viewer panel
+export function fileUrl(id: number): string {
+  return `${API}/documents/${id}/file`;
+}
+
+// documentIds limits the search to the documents ticked in the sidebar
+export async function askQuestion(
+  question: string,
+  documentIds: number[],
+  history: HistoryItem[]
+): Promise<AskResponse> {
+  const res = await axios.post(`${API}/chat/ask`, {
+    question,
+    document_ids: documentIds,
+    history,
+  });
   return res.data;
 }
