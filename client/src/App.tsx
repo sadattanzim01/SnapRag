@@ -1,11 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
-import ReactMarkdown from 'react-markdown';
+//import ReactMarkdown from 'react-markdown';
+import GeneratedPdf from './components/GeneratedPdf';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
-import { Copy, Download, FileText, X } from 'lucide-react';
+//import { Copy, Download, FileText, X } from 'lucide-react';
 import { getDocuments, deleteDocument, DocumentInfo, GeneratedDoc } from './api';
 import UploadZone from './components/UploadZone';
 import Chat from './components/Chat';
 import DocViewer from './components/DocViewer';
+import { FileText, X } from 'lucide-react';
 
 const handleStyle = 'bg-gray-800 hover:bg-blue-500 data-[resize-handle-state=drag]:bg-blue-500 transition-colors';
 
@@ -65,20 +67,20 @@ function App() {
 
   const viewing = docs.find(d => d.id === viewingId) || null;
 
-  function copyDoc() {
-    if (generated) navigator.clipboard.writeText(generated.content);
-  }
+  // function copyDoc() {
+  //   if (generated) navigator.clipboard.writeText(generated.content);
+  // }
 
-  function downloadDoc() {
-    if (!generated) return;
-    const blob = new Blob([generated.content], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${generated.title}.md`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
+  // function downloadDoc() {
+  //   if (!generated) return;
+  //   const blob = new Blob([generated.content], { type: 'text/markdown' });
+  //   const url = URL.createObjectURL(blob);
+  //   const a = document.createElement('a');
+  //   a.href = url;
+  //   a.download = `${generated.title}.md`;
+  //   a.click();
+  //   URL.revokeObjectURL(url);
+  // }
 
   return (
     <div className="h-screen bg-gray-950 text-white">
@@ -163,23 +165,12 @@ function App() {
         </Panel>
 
         {/* ── RIGHT: only exists when Claude generated a document ─────────── */}
+        {/* ── RIGHT: generated document shown as a PDF ── */}
         {generated && (
           <>
             <ColHandle onDragging={setDragging} />
             <Panel id="generated" order={3} defaultSize={34} minSize={15}>
-              <div className="h-full flex flex-col">
-                <div className="flex items-center gap-2 p-4 border-b border-gray-800">
-                  <h2 className="flex-1 font-semibold truncate">{generated.title}</h2>
-                  <button onClick={copyDoc} title="Copy" className="text-gray-400 hover:text-white"><Copy size={18} /></button>
-                  <button onClick={downloadDoc} title="Download .md" className="text-gray-400 hover:text-white"><Download size={18} /></button>
-                  <button onClick={() => setGenerated(null)} title="Close" className="text-gray-400 hover:text-white"><X size={18} /></button>
-                </div>
-                <div className="flex-1 overflow-y-auto p-6">
-                  <div className="prose prose-invert max-w-none">
-                    <ReactMarkdown>{generated.content}</ReactMarkdown>
-                  </div>
-                </div>
-              </div>
+              <GeneratedPdf generated={generated} onClose={() => setGenerated(null)} dragging={dragging} />
             </Panel>
           </>
         )}
