@@ -7,37 +7,36 @@ import { GeneratedDoc } from '../api';
 interface Props {
   generated: GeneratedDoc;
   onClose: () => void;
-  dragging: boolean; // true while a panel handle is being dragged
+  dragging: boolean;
 }
 
-// Claude adds citations like [Source 1, Source 6]. They are useful in chat
-// but should not appear in a finished document, so we strip them for the PDF.
+// Removes citations like [Source 1] so they don't appear in the PDF
 function stripCitations(text: string) {
   return text.replace(/\s*\[Sources?[^\]]*\]/g, '');
 }
 
 function GeneratedPdf({ generated, onClose, dragging }: Props) {
-  // Hidden, light-themed copy of the document that gets turned into the PDF
   const printRef = useRef<HTMLDivElement>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(true);
 
-  const options = {
-    margin: 12,                                   // mm around the page
+  // Typed as any because html2pdf's types only accept exact string values
+  const options: any = {
+    margin: 12,
     filename: `${generated.title}.pdf`,
     image: { type: 'jpeg', quality: 0.98 },
-    html2canvas: { scale: 2 },                    // higher scale = sharper text
+    html2canvas: { scale: 2 },
     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
     pagebreak: { mode: ['css', 'legacy'] },
   };
 
-  // Rebuild the PDF whenever a new document arrives
+  // Build a new PDF whenever a new document arrives
   useEffect(() => {
     let cancelled = false;
     let createdUrl: string | null = null;
     setBusy(true);
 
-    // Small delay so the hidden div has rendered before we capture it
+    // Wait briefly so the hidden page has rendered
     const timer = setTimeout(async () => {
       if (!printRef.current) return;
       try {
@@ -56,7 +55,7 @@ function GeneratedPdf({ generated, onClose, dragging }: Props) {
     return () => {
       cancelled = true;
       clearTimeout(timer);
-      if (createdUrl) URL.revokeObjectURL(createdUrl); // free memory
+      if (createdUrl) URL.revokeObjectURL(createdUrl);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [generated]);
@@ -73,8 +72,12 @@ function GeneratedPdf({ generated, onClose, dragging }: Props) {
     <div className="h-full flex flex-col">
       <div className="flex items-center gap-2 p-4 border-b border-gray-800">
         <h2 className="flex-1 font-semibold truncate">{generated.title}</h2>
-        <button onClick={downloadPdf} disabled={!pdfUrl} title="Download PDF"
-          className="text-gray-400 hover:text-white disabled:opacity-40">
+        <button
+          onClick={downloadPdf}
+          disabled={!pdfUrl}
+          title="Download PDF"
+          className="text-gray-400 hover:text-white disabled:opacity-40"
+        >
           <Download size={18} />
         </button>
         <button onClick={onClose} title="Close" className="text-gray-400 hover:text-white">
@@ -89,13 +92,13 @@ function GeneratedPdf({ generated, onClose, dragging }: Props) {
             src={pdfUrl}
             title={generated.title}
             className="w-full h-full border-0"
-            // while dragging a panel handle, the iframe would swallow the mouse
+            // The iframe blocks the mouse while a panel is being dragged
             style={{ pointerEvents: dragging ? 'none' : 'auto' }}
           />
         )}
       </div>
 
-      {/* Off-screen white page: this is what gets captured into the PDF */}
+      {/* Hidden white page that gets captured into the PDF */}
       <div style={{ position: 'fixed', left: '-10000px', top: 0 }}>
         <div
           ref={printRef}
