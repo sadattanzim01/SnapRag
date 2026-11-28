@@ -1,23 +1,21 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { FileText } from 'lucide-react';
-import { askQuestion, Source, GeneratedDoc } from '../api';
+import { askQuestion, errorMessage, Source, GeneratedDoc } from '../api';
 
 interface Message {
   role: 'user' | 'assistant';
   text: string;
   sources?: Source[];
-  document?: GeneratedDoc | null;   // set when this reply created a document
+  document?: GeneratedDoc | null;
+  isError?: boolean;
 }
 
-// selectedIds: documents ticked in the sidebar (the chat's scope)
-// onDocument: tells App to show a generated document in the right panel
 interface Props {
-  selectedIds: number[];
-  onDocument: (doc: GeneratedDoc) => void;
+  selectedIds: number[]; // documents ticked in the sidebar
+  onDocument: (doc: GeneratedDoc) => void; // opens a generated document on the right
 }
 
-// Clickable examples shown in an empty chat
 const SUGGESTIONS = [
   'Summarize the selected documents',
   'Create a one-page study guide from these documents',
@@ -38,9 +36,11 @@ function Chat({ selectedIds, onDocument }: Props) {
     const question = (text ?? input).trim();
     if (!question || loading || selectedIds.length === 0) return;
 
-    // History is built BEFORE adding the new message, because the backend
-    // appends the current question itself.
-    const history = messages.slice(-6).map(m => ({ role: m.role, content: m.text }));
+    // Built before adding the new message, since the server adds the question itself
+    const history = messages
+      .filter(m => !m.isError)
+      .slice(-6)
+      .map(m => ({ role: m.role, content: m.text }));
 
     setMessages(prev => [...prev, { role: 'user', text: question }]);
     setInput('');
@@ -52,10 +52,12 @@ function Chat({ selectedIds, onDocument }: Props) {
         ...prev,
         { role: 'assistant', text: res.answer, sources: res.sources, document: res.document },
       ]);
-      // If Claude wrote a document, open it in the right panel straight away
       if (res.document) onDocument(res.document);
-    } catch {
-      setMessages(prev => [...prev, { role: 'assistant', text: 'Something went wrong. Is Flask running?' }]);
+    } catch (e) {
+      setMessages(prev => [
+        ...prev,
+        { role: 'assistant', text: errorMessage(e), isError: true },
+      ]);
     } finally {
       setLoading(false);
     }
@@ -63,14 +65,12 @@ function Chat({ selectedIds, onDocument }: Props) {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Top bar: shows how many documents the chat can see */}
       <div className="px-6 py-3 border-b border-gray-800 text-sm text-gray-400">
         {selectedIds.length === 0
           ? 'No documents selected: tick some in the sidebar'
           : `Chatting with ${selectedIds.length} document${selectedIds.length === 1 ? '' : 's'}`}
       </div>
 
-      {/* Messages */}
       <div className="flex-1 overflow-y-auto px-6 py-4">
         <div className="max-w-3xl mx-auto space-y-4">
           {messages.length === 0 && (
@@ -100,15 +100,13 @@ function Chat({ selectedIds, onDocument }: Props) {
                 {m.role === 'user' ? (
                   m.text
                 ) : (
-                  // ReactMarkdown turns **bold**, lists and headings into real formatting.
-                  // "prose" comes from the typography plugin.
                   <div className="prose prose-invert prose-sm max-w-none">
                     <ReactMarkdown>{m.text}</ReactMarkdown>
                   </div>
                 )}
               </div>
 
-              {/* Reopen button, in case the user closed the right panel */}
+              {/* Reopens the document if the right panel was closed */}
               {m.document && (
                 <button
                   onClick={() => onDocument(m.document!)}
@@ -120,7 +118,9 @@ function Chat({ selectedIds, onDocument }: Props) {
 
               {m.sources && m.sources.length > 0 && (
                 <details className="mt-2 text-sm text-gray-400">
-                  <summary className="cursor-pointer hover:text-gray-200">{m.sources.length} sources</summary>
+                  <summary className="cursor-pointer hover:text-gray-200">
+                    {m.sources.length} source{m.sources.length === 1 ? '' : 's'}
+                  </summary>
                   <div className="mt-2 space-y-2">
                     {m.sources.map((s, j) => (
                       <div key={j} className="bg-gray-900 border border-gray-800 rounded-lg p-2">
@@ -142,7 +142,6 @@ function Chat({ selectedIds, onDocument }: Props) {
         </div>
       </div>
 
-      {/* Input */}
       <div className="border-t border-gray-800 p-4">
         <div className="max-w-3xl mx-auto flex gap-2">
           <input
