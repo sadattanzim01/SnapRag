@@ -1,17 +1,19 @@
-# ─── Imports ──────────────────────────────────────────────────────────────────
 import os
 import re
+
 from flask import Blueprint, request, jsonify
 from anthropic import Anthropic
+
 from services.embedder import find_relevant_chunks
 
 chat_bp = Blueprint('chat', __name__)
 
 MODEL = 'claude-sonnet-4-6'
 
-# ─── Pattern for a generated document ────────────────────────────────────────
-# Matches:  <document title="Study Guide"> ...markdown... </document>
-# re.DOTALL lets "." match newlines, because documents span many lines.
+# Sources below this score are hidden from the list (Claude still sees them)
+MIN_SOURCE_SIMILARITY = 0.1
+
+# Matches <document title="..."> ... </document>; DOTALL so "." spans lines
 DOC_PATTERN = re.compile(r'<document\s+title="([^"]*)">(.*?)</document>', re.DOTALL)
 
 SYSTEM_PROMPT = (
@@ -29,25 +31,23 @@ SYSTEM_PROMPT = (
     "Never use the tags for ordinary answers."
 )
 
-# ─── POST /api/chat/ask ───────────────────────────────────────────────────────
+
+def reply(answer):
+    """A chat reply with no sources and no generated document."""
+    return jsonify({'answer': answer, 'sources': [], 'document': None})
+
+
 @chat_bp.route('/ask', methods=['POST'])
 def ask_question():
     """
-    Expects JSON:
-      {
-        "question": "...",
-        "document_ids": [1, 2],         # optional: limit search to these docs
-        "history": [{"role": "user", "content": "..."}, ...]   # optional
-      }
-    Returns JSON:
-      { "answer": "...", "sources": [...], "document": {title, content} | null }
+    Takes {question, document_ids (optional), history (optional)}.
+    Returns {answer, sources, document}.
     """
     data = request.get_json(silent=True) or {}
     question = (data.get('question') or '').strip()
     if not question:
         return jsonify({'error': 'No question provided'}), 400
 
-    # ── Which documents may be searched? ─────────────────────────────────────
     document_ids = None
     if data.get('document_ids') is not None:
         try:
@@ -55,50 +55,38 @@ def ask_question():
         except (TypeError, ValueError):
             return jsonify({'error': 'document_ids must be a list of numbers'}), 400
 
-        # An empty list means the user unticked everything
+        # An empty list means every document is unticked
         if not document_ids:
-            return jsonify({
-                'answer': 'Select at least one document in the sidebar first.',
-                'sources': [],
-                'document': None
-            })
+            return reply('Select at least one document in the sidebar first.')
 
-    # ── RETRIEVE ─────────────────────────────────────────────────────────────
     chunks = find_relevant_chunks(question, top_k=8, document_ids=document_ids)
     if not chunks:
-        return jsonify({
-            'answer': 'No documents have been uploaded yet. Upload a document first.',
-            'sources': [],
-            'document': None
-        })
+        if document_ids:
+            return reply('The selected documents were not found. Refresh the page and try again.')
+        return reply('No documents have been uploaded yet. Upload a document first.')
 
-    # ── AUGMENT ──────────────────────────────────────────────────────────────
-    context = "\n\n---\n\n".join(
+    context = '\n\n---\n\n'.join(
         f"[Source {i}: {c['filename']}]\n{c['content']}"
         for i, c in enumerate(chunks, start=1)
     )
-    user_message = f"Document excerpts:\n\n{context}\n\nQuestion: {question}"
+    user_message = f'Document excerpts:\n\n{context}\n\nQuestion: {question}'
 
-    # ── Conversation memory ──────────────────────────────────────────────────
-    # The API is stateless, so the frontend sends recent messages and we pass
-    # them along. This makes follow-ups like "make it shorter" work.
-    # Only the last 6 are kept, to limit cost.
+    # The API has no memory, so the last 6 messages are sent with each question
     history = []
     for m in (data.get('history') or [])[-6:]:
         if m.get('role') in ('user', 'assistant') and isinstance(m.get('content'), str):
             history.append({'role': m['role'], 'content': m['content']})
-    # The conversation must open with a user message
+    # The conversation must start with a user message
     while history and history[0]['role'] == 'assistant':
         history.pop(0)
 
     messages = history + [{'role': 'user', 'content': user_message}]
 
-    # ── GENERATE ─────────────────────────────────────────────────────────────
     client = Anthropic(api_key=os.environ.get('ANTHROPIC_API_KEY'))
     try:
         response = client.messages.create(
             model=MODEL,
-            max_tokens=3000,     # bigger, since a document is longer than an answer
+            max_tokens=3000,
             system=SYSTEM_PROMPT,
             messages=messages
         )
@@ -106,7 +94,7 @@ def ask_question():
     except Exception as e:
         return jsonify({'error': f'Claude API error: {str(e)}'}), 500
 
-    # ── Split the reply into chat text and an optional document ──────────────
+    # Split the reply into chat text and an optional generated document
     answer = raw
     document = None
     match = DOC_PATTERN.search(raw)
@@ -115,16 +103,17 @@ def ask_question():
             'title': match.group(1).strip() or 'Generated document',
             'content': match.group(2).strip()
         }
-        # Remove the document from the chat text, so it only shows on the right
         answer = DOC_PATTERN.sub('', raw).strip() or 'I created the document. It is open on the right.'
 
+    # Chunks are sorted best-first, so keeping the top one is the fallback
+    shown = [c for c in chunks if c['similarity'] >= MIN_SOURCE_SIMILARITY] or chunks[:1]
     sources = [
         {
             'filename': c['filename'],
             'similarity': round(c['similarity'], 3),
             'preview': c['content'][:150]
         }
-        for c in chunks
+        for c in shown
     ]
 
     return jsonify({'answer': answer, 'sources': sources, 'document': document})

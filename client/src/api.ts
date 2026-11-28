@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API = 'http://127.0.0.1:5001/api';
+const API = process.env.REACT_APP_API_URL || 'http://127.0.0.1:5001/api';
 
 export interface DocumentInfo {
   id: number;
@@ -16,22 +16,30 @@ export interface Source {
   preview: string;
 }
 
-// A document Claude wrote for the user. Shown in the right panel.
+// A document Claude wrote, shown in the right panel
 export interface GeneratedDoc {
   title: string;
-  content: string;   // Markdown
+  content: string; // Markdown
 }
 
 export interface AskResponse {
   answer: string;
   sources: Source[];
-  document: GeneratedDoc | null;   // null for ordinary answers
+  document: GeneratedDoc | null; // null for ordinary answers
 }
 
-// One earlier message, sent so Claude remembers the conversation
+// An earlier message, sent so Claude remembers the conversation
 export interface HistoryItem {
   role: 'user' | 'assistant';
   content: string;
+}
+
+// Gets the server's error message from a failed request
+export function errorMessage(err: unknown): string {
+  if (axios.isAxiosError(err)) {
+    return err.response?.data?.error || 'Could not reach the server';
+  }
+  return 'Something went wrong';
 }
 
 export async function getDocuments(): Promise<DocumentInfo[]> {
@@ -50,7 +58,7 @@ export async function deleteDocument(id: number) {
   await axios.delete(`${API}/documents/${id}`);
 }
 
-// URL of the original uploaded file, used by the viewer panel
+// URL of the original uploaded file, used by the viewer
 export function fileUrl(id: number): string {
   return `${API}/documents/${id}/file`;
 }
