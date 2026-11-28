@@ -1,34 +1,22 @@
 import os
 import sqlite3
-import json
 
-# ─── Database path ────────────────────────────────────────────────────────────
-# SQLite stores everything in a single file on disk — no server needed
-# The file will be created automatically when the app first runs
-DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'snaprag.db')
+# The database is one file next to the server folder
+DB_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'snaprag.db'))
+
 
 def get_connection():
-    """
-    Creates a SQLite connection.
-    SQLite is a file-based database — no server, no credentials, no network.
-    Perfect for local development.
-    """
     conn = sqlite3.connect(DB_PATH)
-    # Makes rows return as dictionaries instead of plain tuples
-    # So we get {'id': 1, 'filename': 'doc.pdf'} instead of (1, 'doc.pdf')
+    # Rows can be read by column name, like row['filename']
     conn.row_factory = sqlite3.Row
     return conn
 
+
 def init_db():
-    """
-    Creates the tables if they don't exist yet.
-    Called once when the Flask server starts.
-    SQLite automatically creates the .db file if it doesn't exist.
-    """
+    """Create the tables if they don't exist yet."""
     conn = get_connection()
     cursor = conn.cursor()
 
-    # Documents table — stores metadata about each uploaded file
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS documents (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -40,8 +28,7 @@ def init_db():
         )
     ''')
 
-    # Chunks table — stores each piece of text and its embedding
-    # Embedding is stored as JSON text locally (real vector in production)
+    # The embedding is stored as JSON text
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS document_chunks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,15 +40,20 @@ def init_db():
         )
     ''')
 
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_chunks_document
+        ON document_chunks(document_id)
+    ''')
+
     conn.commit()
     conn.close()
-    print('✅ Database initialized')
+    print('Database initialized')
+
 
 def execute_query(query, params=None, fetch=True):
     """
-    Runs a SQL query and optionally returns results.
-    fetch=True for SELECT queries — returns list of dicts
-    fetch=False for INSERT/UPDATE/DELETE — commits and returns last row id
+    fetch=True: run a SELECT and return a list of dicts.
+    fetch=False: run an INSERT/UPDATE/DELETE, commit, and return the last row id.
     """
     conn = get_connection()
     try:
@@ -69,12 +61,9 @@ def execute_query(query, params=None, fetch=True):
         cursor.execute(query, params or ())
 
         if fetch:
-            rows = cursor.fetchall()
-            # Convert sqlite3.Row objects to plain dicts
-            return [dict(row) for row in rows]
-        else:
-            conn.commit()
-            return cursor.lastrowid
+            return [dict(row) for row in cursor.fetchall()]
+
+        conn.commit()
+        return cursor.lastrowid
     finally:
-        # Always close the connection even if an error occurs
         conn.close()
