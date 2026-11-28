@@ -17,6 +17,9 @@ def chunk_text(text, chunk_size=200, overlap=50):
     i = 0
     while i < len(words):
         chunks.append(' '.join(words[i:i + chunk_size]))
+        # Stop once a chunk reaches the end, so the last words aren't repeated alone
+        if i + chunk_size >= len(words):
+            break
         i += chunk_size - overlap
 
     return chunks
